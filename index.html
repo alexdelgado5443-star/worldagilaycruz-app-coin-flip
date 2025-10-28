@@ -3,11 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Título de la página que aparece en la pestaña del navegador -->
     <title>AGILA y Cruz</title>
     <!-- Carga de Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Configuración para usar la fuente Inter -->
+    <!-- Carga de la librería World App SDK para transacciones -->
+    <script type="module">
+        // Importa la función requestWalletTransaction y otros elementos del SDK
+        import { requestWalletTransaction } from 'https://cdn.jsdelivr.net/npm/@worldcoin/world-app-js@1.1.2/dist/esm/index.js';
+        window.requestWalletTransaction = requestWalletTransaction;
+        // Importa y expone la función para obtener la dirección del usuario (si está disponible)
+        import { getAddress } from 'https://cdn.jsdelivr.net/npm/@worldcoin/world-app-js@1.1.2/dist/esm/index.js';
+        window.getAddress = getAddress; 
+    </script>
+    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
         body {
@@ -15,8 +23,9 @@
             background-color: #1a1a1a;
             color: #ffffff;
             min-height: 100vh;
-            overflow-x: hidden; /* Previene scroll horizontal */
+            overflow-x: hidden;
         }
+        /* Estilos de la Moneda, Animación y Splash Screen */
         .coin {
             width: 200px;
             height: 200px;
@@ -52,19 +61,12 @@
             color: #1a1a1a;
             transform: rotateY(180deg);
         }
-
-        /* Duración de animación ajustada a 4.5s */
-        .flip {
-            animation: flip 4.5s ease-out forwards;
-        }
-
+        .flip { animation: flip 4.5s ease-out forwards; }
         @keyframes flip {
             0% { transform: rotateY(0deg); }
-            50% { transform: rotateY(3240deg); } /* Gira 9 vueltas completas */
+            50% { transform: rotateY(3240deg); } 
             100% { transform: rotateY(calc(var(--final-rotation) + 3600deg)); }
         }
-
-        /* Estilos del Splash Screen */
         #splash-screen {
             position: fixed;
             top: 0;
@@ -86,15 +88,11 @@
             opacity: 0 !important;
             pointer-events: none;
         }
-        
     </style>
 </head>
 <body class="flex flex-col items-center justify-start py-8 px-4 sm:px-6">
 
-    <!-- 1. SPLASH SCREEN (Muestra "AGILA y Cruz" por 5 segundos) -->
-    <div id="splash-screen">
-        AGILA y Cruz
-    </div>
+    <div id="splash-screen">AGILA y Cruz</div>
     
     <div id="app-container" class="w-full max-w-md bg-zinc-900 rounded-xl shadow-2xl p-6 flex flex-col items-center">
         <!-- Barra superior de Títulos -->
@@ -104,11 +102,11 @@
             <span class="text-sm font-semibold text-amber-500">Cruz 50%</span>
         </div>
 
-        <!-- Información del Usuario, Saldo y Marcador -->
+        <!-- Información del Usuario y Marcador -->
         <div class="text-center mb-6 w-full text-sm">
-            <!-- DISPLAY DEL SALDO DEL JUGADOR -->
-            <p id="balance-info" class="text-lg font-bold mb-1 text-green-400">Saldo: <span id="player-balance">50.00</span> WLD</p>
-            <p id="user-info" class="text-gray-300">Usuario1234 - <span id="wins">0</span> Victorias / <span id="losses">0</span> Derrotas</p>
+            <!-- SE ELIMINA LA LÍNEA DEL SALDO FICTICIO -->
+            <p id="player-info" class="text-lg font-bold mb-1 text-green-400">Dirección: <span id="player-address">Cargando...</span></p>
+            <p id="user-info" class="text-gray-300">Usuario World App - <span id="wins">0</span> Victorias / <span id="losses">0</span> Derrotas</p>
         </div>
 
         <!-- Moneda y Resultado -->
@@ -122,7 +120,7 @@
         <!-- Monto de Apuesta Seleccionado -->
         <div class="text-center mb-6">
             <h2 id="current-bet" class="text-4xl font-extrabold text-amber-400">0.25 WLD</h2>
-            <p class="text-xs text-gray-400">Juego limpio a través de World Chain</p>
+            <p class="text-xs text-gray-400">Transacción real en World Chain</p>
         </div>
 
         <!-- Botones de Apuesta (Agila/Cruz) -->
@@ -157,16 +155,15 @@
         let wins = 0;
         let losses = 0;
         let isFlipping = false;
+        let playerWalletAddress = null; // Almacenará la dirección del jugador
+
+        // Tu dirección de World Chain para recibir las apuestas
+        const RECEIVER_ADDRESS = "0xeaf05196b224619aeb32018e55a9606e88c128d0"; 
         
-        // Simulación de saldo inicial (50 WLD)
-        let playerBalance = 50.00; 
+        // Dirección oficial del token WLD en World Chain
+        const WLD_TOKEN_ADDRESS = "0x1bA80502283a0F9e1b21D49589aE251910260B5B"; 
 
-        // Actualiza el saldo en la interfaz
-        function updateBalanceDisplay() {
-            document.getElementById('player-balance').textContent = playerBalance.toFixed(2);
-        }
-
-        // La secuencia de resultados predefinida (True = Gana, False = Pierde)
+        // Secuencia predefinida: 4 Victorias en 10 jugadas (40% de tasa de victoria)
         const WIN_LOSS_SEQUENCE = [
             false,  // 1: Pierde
             false,  // 2: Pierde
@@ -177,20 +174,36 @@
             false,  // 7: Pierde
             false,  // 8: Pierde
             true,   // 9: Gana
-            true    // 10: Gana (4 Victorias)
+            true    // 10: Gana
         ];
         let sequenceIndex = 0;
 
-        /**
-         * Determina el resultado usando una secuencia fija (4 victorias en 10 jugadas).
-         * @returns {boolean} True si el jugador gana, False si pierde.
-         */
+        // Función para obtener la dirección del usuario al cargar la app
+        async function fetchPlayerAddress() {
+            try {
+                // El SDK permite obtener la dirección del usuario actual
+                const address = await window.getAddress();
+                playerWalletAddress = address;
+                document.getElementById('player-address').textContent = address.substring(0, 6) + '...' + address.substring(address.length - 4);
+            } catch (error) {
+                document.getElementById('player-address').textContent = 'No disponible';
+                console.warn("No se pudo obtener la dirección del usuario. Las ganancias no se podrán transferir sin un Contrato Inteligente.", error);
+            }
+        }
+
+
+        // Función auxiliar para habilitar/deshabilitar botones
+        function toggleButtons(disabled) {
+            document.getElementById('btn-agila').disabled = disabled;
+            document.getElementById('btn-cruz').disabled = disabled;
+            document.querySelectorAll('.bet-amount-btn').forEach(btn => btn.disabled = disabled);
+        }
+
         function determineOutcomeJS() {
             const isWinInSequence = WIN_LOSS_SEQUENCE[sequenceIndex];
             sequenceIndex = (sequenceIndex + 1) % WIN_LOSS_SEQUENCE.length;
             return isWinInSequence;
         }
-
 
         function setBet(amount) {
             if (isFlipping) return;
@@ -204,87 +217,136 @@
             statusElement.textContent = text;
             statusElement.className = 'text-center p-3 rounded-lg w-full max-w-xs font-semibold';
             if (isError) {
-                // Mensaje de derrota/error
                 statusElement.classList.add('bg-red-800', 'text-red-200');
             } else {
-                // Mensaje de victoria/info
                 statusElement.classList.add('bg-zinc-700', 'text-gray-200');
             }
         }
-
-        function placeBet(guess) { // true for AGILA, false for CRUZ
-            if (isFlipping) {
-                updateMessage("Espera a que termine el volado.", true);
+        
+        /**
+         * Intenta simular el pago de ganancias. 
+         * ESTE CÓDIGO SOLO INICIA UNA TRANSFERENCIA, PERO EL JUGADOR DEBE APROBARLA, LO CUAL NO ES LÓGICA DE JUEGO.
+         * En un juego real, esto lo haría tu Contrato Inteligente automáticamente.
+         */
+        async function payWinnings(amount) {
+            if (!playerWalletAddress) {
+                updateMessage("¡Ganaste! Pero tu dirección no está disponible para la transferencia automática.", true);
                 return;
             }
+            
+            updateMessage(`¡GANASTE! Solicitando transferencia de ${amount.toFixed(2)} WLD (Ganancias)...`);
+            
+            try {
+                // Se intentaría enviar 2x la apuesta al jugador
+                const amountToPay = amount * 2;
+                const amountInWei = BigInt(amountToPay * 10**18); 
 
-            // 1. Verificar saldo suficiente
-            if (playerBalance < currentBetAmount) {
-                updateMessage("SALDO INSUFICIENTE. ¡Recarga tu World App!", true);
+                const txParams = {
+                    // Dirección del Jugador (Destino de las ganancias)
+                    to: playerWalletAddress, 
+                    
+                    // Contrato del token WLD
+                    token: WLD_TOKEN_ADDRESS, 
+                    
+                    // Monto de las ganancias (2x la apuesta)
+                    amount: amountInWei.toString(), 
+                };
+
+                // ESTO LE PEDIRÁ AL JUGADOR QUE APRUEBE UNA TRANSFERENCIA A SÍ MISMO. 
+                // Esto es solo para propósitos de demostración.
+                const txHash = await window.requestWalletTransaction(txParams);
+
+                updateMessage(`¡GANASTE! Ganancias transferidas: ${amountToPay.toFixed(2)} WLD. Transacción: ${txHash.substring(0, 6)}...`, false);
+            } catch (error) {
+                 // Si el jugador cancela la recepción de ganancias, o la transferencia falla.
+                updateMessage("Ganaste, pero la transferencia de ganancias falló o fue cancelada.", true);
+                console.error("Error al pagar ganancias:", error);
+            }
+        }
+
+
+        // Muestra el resultado visual de la animación
+        function showResultAnimation(playerWon, actualResult) {
+            const coinElement = document.getElementById('coin');
+            coinElement.classList.remove('flip');
+            void coinElement.offsetWidth; 
+
+            const finalRotation = actualResult ? 0 : 180; 
+
+            coinElement.style.setProperty('--final-rotation', finalRotation + 'deg');
+            coinElement.classList.add('flip');
+
+            // Muestra el resultado final después de la animación de 4.5 segundos
+            setTimeout(async () => {
+                isFlipping = false;
+                toggleButtons(false); 
+                
+                if (playerWon) {
+                    wins++;
+                    // Si gana, intentar pagar las ganancias.
+                    document.getElementById('wins').textContent = wins;
+                    await payWinnings(currentBetAmount); // Llama a la función para pagar
+                } else {
+                    losses++;
+                    // Si pierde, la transferencia a tu dirección ya se completó en el Paso 1
+                    updateMessage(`PERDISTE. La moneda cayó en ${actualResult ? 'Agila' : 'Cruz'}. Tu apuesta se transfirió.`, true);
+                    document.getElementById('losses').textContent = losses;
+                }
+            }, 4500); 
+        }
+
+        // FUNCIÓN PRINCIPAL QUE INICIA LA TRANSACCIÓN REAL (Paso 1: Pago de Apuesta)
+        async function placeBet(guess) { // true for AGILA, false for CRUZ
+            if (isFlipping) return;
+            if (!playerWalletAddress) {
+                updateMessage("Espera a obtener la dirección de tu billetera o recarga la Mini App.", true);
                 return;
             }
 
             isFlipping = true;
-            
-            // 2. Descontar la apuesta inmediatamente (simulación de pago)
-            playerBalance -= currentBetAmount;
-            updateBalanceDisplay();
-            
-            // Deshabilitar botones mientras se juega
-            document.getElementById('btn-agila').disabled = true;
-            document.getElementById('btn-cruz').disabled = true;
+            toggleButtons(true);
 
-            updateMessage(`Apostando ${currentBetAmount} WLD a ${guess ? 'AGILA' : 'CRUZ'}...`);
+            updateMessage(`Solicitando transacción de ${currentBetAmount} WLD a tu billetera...`, false);
 
-            const coinElement = document.getElementById('coin');
-            coinElement.classList.remove('flip');
-            void coinElement.offsetWidth; // Reinicia la animación
-
-            // Determinar si el jugador gana o pierde (True si Gana)
             const playerWon = determineOutcomeJS();
-            
-            // Determinar el resultado real de la moneda:
             const actualResult = playerWon ? guess : !guess; 
+            
+            try {
+                // Paso 1: El jugador paga la apuesta (Envío a tu dirección)
+                const amountInWei = BigInt(currentBetAmount * 10**18); 
 
-            // 0deg para Agila (True), 180deg para Cruz (False)
-            const finalRotation = actualResult ? 0 : 180; 
+                const txParams = {
+                    to: RECEIVER_ADDRESS, // Tu dirección
+                    token: WLD_TOKEN_ADDRESS, 
+                    amount: amountInWei.toString(), 
+                };
 
-            // Aplicar la rotación final y comenzar la animación
-            coinElement.style.setProperty('--final-rotation', finalRotation + 'deg');
-            coinElement.classList.add('flip');
+                const txHash = await window.requestWalletTransaction(txParams);
+                
+                updateMessage(`Pago de la apuesta confirmado (${txHash.substring(0, 6)}...). Volando la moneda...`);
+                
+                // Inicia la animación visual del resultado y el pago de ganancias
+                showResultAnimation(playerWon, actualResult);
 
-            // 3. Mostrar el resultado después de la animación de 4.5 segundos
-            setTimeout(() => {
+            } catch (error) {
+                // Transacción cancelada o fallida (el jugador no pagó)
                 isFlipping = false;
-                document.getElementById('btn-agila').disabled = false;
-                document.getElementById('btn-cruz').disabled = false;
-                
-                if (playerWon) {
-                    wins++;
-                    // Si gana, se le devuelve la apuesta (currentBetAmount) más la ganancia (currentBetAmount)
-                    playerBalance += currentBetAmount * 2; 
-                    updateMessage(`¡GANASTE! La moneda cayó en ${actualResult ? 'Agila' : 'Cruz'}. Has ganado ${currentBetAmount.toFixed(2)} WLD.`, false);
-                } else {
-                    losses++;
-                    // Si pierde, solo se pierde el currentBetAmount (ya descontado)
-                    updateMessage(`PERDISTE. La moneda cayó en ${actualResult ? 'Agila' : 'Cruz'}.`, true);
-                }
-                
-                document.getElementById('wins').textContent = wins;
-                document.getElementById('losses').textContent = losses;
-                updateBalanceDisplay(); // Actualiza el saldo final
-            }, 4500); // 4.5s es la duración de la animación
+                toggleButtons(false);
+                const errorMessage = "Transacción de apuesta cancelada o fallida. Intenta de nuevo.";
+                updateMessage(errorMessage, true);
+                console.error("Error en la transacción de la apuesta:", error);
+            }
         }
 
         // Inicializar
         document.addEventListener('DOMContentLoaded', () => {
+            fetchPlayerAddress(); // Obtener la dirección del jugador
             // Oculta el Splash Screen después de 5 segundos
             setTimeout(() => {
                 document.getElementById('splash-screen').classList.add('hidden-splash');
             }, 5000); 
             
             setBet(0.25);
-            updateBalanceDisplay();
         });
 
     </script>
