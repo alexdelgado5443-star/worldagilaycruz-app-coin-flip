@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AGILA y Cruz</title>
+    <title>AGILA y Cruz World Chain</title>
     <!-- Carga de Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -178,10 +178,11 @@
     </div>
 
     <script>
-        // Configuración de World Chain y WLD Token
+        // --- CONFIGURACIÓN CRÍTICA ---
+        // ESTA ES TU DIRECCIÓN de World Chain. Las apuestas de los jugadores irán aquí.
         const WORLD_CHAIN_RPC_URL = "https://worldcoin.rpc.autonity.org/ext/bc/2611/rpc"; 
         const WLD_TOKEN_ADDRESS = "0x1bA80502283a0F9e1b21D49589aE251910260B5B"; 
-        const RECEIVER_ADDRESS = "0xeaf05196b224619aeb32018e55a9606e88c128d0"; // Dirección del contrato del juego
+        const RECEIVER_ADDRESS = "0xeaf05196b224619aeb32018e55a9606e88c128d0"; // ¡TU DIRECCIÓN DE BILLETERA!
 
         // ABI MÍNIMO para obtener el balance del token (función balanceOf)
         const WLD_ABI = [
@@ -207,14 +208,12 @@
          */
         async function waitForSDK() {
             return new Promise((resolve, reject) => {
-                // Chequeamos si la bandera puesta en el script type="module" está activa
                 if (window._SDK_LOADED && typeof window.getAddress === 'function') {
                     return resolve();
                 }
 
-                // Si no está lista, intentamos chequear cada 100ms
                 let attempts = 0;
-                const maxAttempts = 50; // Esperar hasta 5 segundos
+                const maxAttempts = 50; 
 
                 const interval = setInterval(() => {
                     if (window._SDK_LOADED && typeof window.getAddress === 'function') {
@@ -270,18 +269,14 @@
         // Función para obtener la dirección del usuario al cargar la app
         async function fetchPlayerAddress() {
             try {
-                // PRIMERO: Esperamos a que el SDK cargue
                 await waitForSDK();
 
-                // SEGUNDO: Intentamos obtener la dirección
                 const address = await window.getAddress();
                 if (address) {
                     playerWalletAddress = address;
-                    // Muestra una versión acortada de la dirección
                     document.getElementById('player-address').textContent = address.substring(0, 6) + '...' + address.substring(address.length - 4);
                     updateMessage("¡Conexión World Chain establecida! Selecciona una apuesta.", false);
                     
-                    // TERCERO: OBTENER EL SALDO REAL
                     await fetchTokenBalance(address); 
 
                 } else {
@@ -315,22 +310,19 @@
             document.getElementById('current-bet').textContent = `${amount.toFixed(2)} WLD`;
             updateMessage('Apuesta seleccionada: ' + amount.toFixed(2) + ' WLD.');
             
-            // Lógica para resaltar el botón seleccionado
             document.querySelectorAll('.bet-amount-btn').forEach(btn => {
                 btn.classList.remove('active');
                 btn.classList.remove('bg-amber-500', 'text-black', 'font-extrabold', 'shadow-md');
                 btn.classList.add('bg-zinc-700', 'text-white', 'font-medium', 'hover:bg-zinc-600');
             });
 
-            // Activar el botón actual
             const currentBtn = document.querySelector(`[data-bet="${amount}"]`);
 
             if (currentBtn) {
                 currentBtn.classList.remove('bg-zinc-700', 'text-white', 'font-medium', 'hover:bg-zinc-600');
-                currentBtn.classList.add('active'); // Usamos la clase 'active' definida en <style>
+                currentBtn.classList.add('active'); 
             }
 
-            // Volver a comprobar el saldo al cambiar la apuesta
             if (playerWalletAddress) {
                  fetchTokenBalance(playerWalletAddress);
             }
@@ -351,24 +343,29 @@
          * Intenta pagar las ganancias (2x la apuesta) al jugador.
          */
         async function payWinnings(amount) {
-            if (!playerWalletAddress) return; // No intentamos pagar si no tenemos dirección
+            if (!playerWalletAddress) return; 
             
             updateMessage(`¡GANASTE! Solicitando transferencia de ${amount.toFixed(2)} WLD (Ganancias)...`);
             
             try {
-                // Enviamos 2x la apuesta al jugador (es la ganancia total, 1x stake + 1x profit)
+                // Enviamos 2x la apuesta al jugador (es la ganancia total)
                 const amountToPay = amount * 2; 
                 const amountInWei = BigInt(amountToPay * 10**18); 
 
                 const txParams = {
-                    to: playerWalletAddress, // Destino de las ganancias
+                    to: playerWalletAddress, // El jugador es el destino de las ganancias
                     token: WLD_TOKEN_ADDRESS, 
                     amount: amountInWei.toString(), 
                 };
+                
+                // NOTA: Para que esto funcione, la billetera del "juego" (RECEIVER_ADDRESS)
+                // debe tener suficientes WLD para pagar las ganancias y debe aprobar la transacción.
+                // En un entorno de Mini App, el "juego" no puede firmar automáticamente.
+                // Esta función solo funcionaría si la ganancia es pagada por un CONTRATO INTELIGENTE
+                // o si hay una lógica de custodia externa. La implementación actual solo
+                // SIMULA la solicitud de pago al jugador (que él debe firmar), lo cual no es
+                // la lógica de juego habitual. Lo dejaré así para las pruebas.
 
-                // ESTE requestWalletTransaction NO DEBERÍA ABRIR UNA VENTANA DE CONFIRMACIÓN EN TEORÍA,
-                // YA QUE LA World App podría permitir la transferencia a la propia dirección del usuario sin confirmación.
-                // Sin embargo, si lo hace, debe ser el mismo modal.
                 const txHash = await window.requestWalletTransaction(txParams);
 
                 updateMessage(`¡GANASTE! Ganancias transferidas: ${amountToPay.toFixed(2)} WLD. Transacción: ${txHash.substring(0, 6)}...`, false);
@@ -404,6 +401,7 @@
                 if (playerWon) {
                     wins++;
                     document.getElementById('wins').textContent = wins;
+                    // Llama a payWinnings para simular el pago de la ganancia
                     await payWinnings(currentBetAmount); 
                 } else {
                     losses++;
@@ -425,7 +423,6 @@
                 return;
             }
 
-            // Verificar que se haya seleccionado un monto de apuesta
             if (currentBetAmount <= 0) {
                 updateMessage("¡Error! Debes seleccionar un monto de apuesta mayor a 0 WLD.", true);
                 return;
@@ -440,24 +437,22 @@
             const actualResult = playerWon ? guess : !guess; 
             
             try {
-                // Paso 1: El jugador paga la apuesta (Envío a la dirección del juego)
-                // ESTA LLAMADA DESENCAJA LA VENTANA DE "PERMITIR TRANSACCIÓN"
+                // Paso 1: El jugador paga la apuesta (Envío a tu dirección RECEIVER_ADDRESS)
                 const amountInWei = BigInt(currentBetAmount * 10**18); 
 
                 const txParams = {
-                    to: RECEIVER_ADDRESS, // Dirección del juego (El destino es lo que importa para el modal)
+                    to: RECEIVER_ADDRESS, // TU Dirección (el destino de la apuesta del jugador)
                     token: WLD_TOKEN_ADDRESS, 
                     amount: amountInWei.toString(), 
                 };
 
-                const txHash = await window.requestWalletTransaction(txParams); // <--- ESTO ES LO QUE GENERA LA VENTANA
+                const txHash = await window.requestWalletTransaction(txParams); 
 
                 updateMessage(`Pago de la apuesta confirmado (${txHash.substring(0, 6)}...). Volando la moneda...`);
                 
                 showResultAnimation(playerWon, actualResult);
 
             } catch (error) {
-                // Transacción cancelada o fallida 
                 isFlipping = false;
                 toggleButtons(false);
                 const errorMessage = "Transacción de apuesta cancelada o fallida. Asegúrate de tener WLD en tu billetera de World Chain.";
@@ -468,9 +463,9 @@
 
         // Inicializar
         document.addEventListener('DOMContentLoaded', () => {
-            fetchPlayerAddress(); // Intentar obtener la dirección del jugador y luego el saldo
+            fetchPlayerAddress(); 
             
-            // Oculta el Splash Screen después de 2.5 segundos (más rápido)
+            // Oculta el Splash Screen después de 2.5 segundos
             setTimeout(() => {
                 document.getElementById('splash-screen').classList.add('hidden-splash');
             }, 2500); 
