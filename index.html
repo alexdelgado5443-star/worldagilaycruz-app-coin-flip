@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Double or Nothing - Águila o Cruz</title>
+    <!-- Carga de Tailwind CSS para un diseño moderno y responsive -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carga de Phosphor Icons para iconos modernos -->
+    <script src="https://unpkg.com/@phosphor-icons/web@2.1.1/dist/index_rtl.js"></script>
+    <!-- Carga de Tone.js para la generación de sonido de la moneda -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121212; /* Fondo oscuro */
+            color: #ffffff;
+            overflow-x: hidden; 
+        }
+        .app-container {
+            /* Simula el ancho de una app móvil centrada */
+            max-width: 420px;
+            width: 100%;
+            min-height: 100vh;
+            background-color: #000;
+        }
+        .header {
+            background-color: #000;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        .nav-bar {
+            background-color: #1e1e1e;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
+        }
+        /* Animación de giro de la moneda */
+        .coin-icon {
+            animation: flip 2s ease-in-out infinite;
+        }
+        @keyframes flip {
+            0% { transform: rotateY(0deg) scale(1); }
+            50% { transform: rotateY(1800deg) scale(1.1); }
+            100% { transform: rotateY(3600deg) scale(1); }
+        }
+        /* Clase para detener la animación y mostrar el resultado */
+        .coin-icon-stopped {
+            animation: none;
+            transform: rotateY(0deg) scale(1.2);
+        }
+        .btn-bet {
+            transition: all 0.1s ease-in-out;
+        }
+        .btn-bet:active:not(:disabled) {
+            transform: translateY(1px);
+            box-shadow: none !important;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-start">
+
+    <div class="app-container flex flex-col justify-between">
+        <!-- 1. HEADER SUPERIOR (BARRA DE TÍTULO) -->
+        <header class="header p-4 flex items-center justify-between text-white sticky top-0 z-10">
+            <i class="ph ph-x text-2xl"></i>
+            <h1 class="text-lg font-bold flex items-center">
+                <i class="ph ph-smiley text-xl text-yellow-500 mr-1"></i>
+                Double or Nothing
+            </h1>
+            <i class="ph ph-dots-three-vertical text-2xl"></i>
+        </header>
+
+        <!-- 2. BARRA DE ESTADO (Simulada - 50/50) -->
+        <div class="flex justify-between items-center text-xs px-4 py-2 bg-gray-900 border-b border-yellow-600">
+            <span class="font-semibold text-yellow-500">
+                <i class="ph ph-trophy-fill mr-1"></i> Águila 50%
+            </span>
+            <span class="font-semibold text-yellow-500">
+                Cruz 50% <i class="ph ph-crown-simple-fill ml-1"></i>
+            </span>
+        </div>
+
+        <!-- 3. CONTENIDO PRINCIPAL DEL JUEGO -->
+        <main class="flex-grow p-4 overflow-y-auto">
+            
+            <!-- Barra de Información del Usuario (Simulada) -->
+            <div class="flex items-center justify-between mb-6">
+                <p class="text-yellow-500 text-sm font-semibold flex items-center">
+                    <i class="ph ph-smiley-fill mr-2 text-xl"></i>
+                    Usuario1234
+                </p>
+                <span id="player-status" class="text-xs font-medium text-green-400">
+                    <span id="wins-count">0</span> Victorias / <span id="losses-count">0</span> Derrotas
+                </span>
+            </div>
+
+            <!-- Área de la Moneda Central (Simulada) -->
+            <div id="coin-area" class="text-center mb-8">
+                <!-- Contenedor de la moneda con animaciones -->
+                <div id="coin-display" class="relative w-40 h-40 mx-auto bg-yellow-600 rounded-full shadow-lg flex items-center justify-center transform transition-transform duration-500 ease-out">
+                    <i id="coin-svg" class="ph ph-smiley-wink-fill text-8xl text-gray-900 coin-icon-stopped transition-all duration-300"></i>
+                    <span id="coin-label" class="absolute text-3xl font-black text-gray-900 pointer-events-none opacity-0 transition-opacity duration-300"></span>
+                </div>
+
+                <!-- Monto de apuesta actual -->
+                <div class="mt-4">
+                    <p class="text-3xl font-black text-white flex items-center justify-center">
+                        <span id="wld-amount-display">0.25 WLD</span> 
+                        <i class="ph ph-caret-down text-xl ml-2 text-gray-400"></i>
+                    </p>
+                    <p class="text-xs text-gray-500 mt-1">Juego limpio a través de World Chain</p>
+                </div>
+            </div>
+
+            <!-- Mensajes de Estado y Resultado -->
+            <div id="status-area" class="h-10 mb-6 flex flex-col justify-center text-center">
+                <p id="result-message" class="text-xl font-extrabold text-white transition-all duration-300">¡Elige tu apuesta!</p>
+                <!-- Botón para iniciar el AudioContext (Necesario en móvil para el sonido) -->
+                <button id="audio-start-btn" onclick="startAudioContext()" class="mt-2 text-xs text-yellow-400 focus:outline-none hidden">
+                    Toca aquí para activar el sonido
+                </button>
+            </div>
+            
+            <!-- Botones de ÁGUILA/CRUZ (La decisión del jugador) -->
+            <div class="flex space-x-3 mb-6">
+                <button id="btn-aguila" data-guess="true" onclick="makeGuess(true)"
+                    class="btn-bet flex-1 py-4 bg-yellow-500 text-gray-900 font-extrabold rounded-lg hover:bg-yellow-400 disabled:opacity-50 shadow-lg shadow-yellow-900/50">
+                    ÁGUILA
+                </button>
+                <button id="btn-cruz" data-guess="false" onclick="makeGuess(false)"
+                    class="btn-bet flex-1 py-4 bg-yellow-500 text-gray-900 font-extrabold rounded-lg hover:bg-yellow-400 disabled:opacity-50 shadow-lg shadow-yellow-900/50">
+                    CRUZ
+                </button>
+            </div>
+
+            <!-- Opciones de Apuesta (Los 6 montos solicitados) -->
+            <p class="text-gray-400 text-sm font-semibold uppercase mb-3 text-center">Monto de la Apuesta (WLD)</p>
+            <div class="grid grid-cols-3 gap-3">
+                <button class="w-full py-2 bg-yellow-500 text-gray-900 font-bold rounded-lg btn-bet text-sm" onclick="setBet(0.15)">0.15 WLD</button>
+                <button class="w-full py-2 bg-yellow-500 text-gray-900 font-bold rounded-lg btn-bet text-sm" onclick="setBet(0.25)">0.25 WLD</button>
+                <button class="w-full py-2 bg-yellow-500 text-gray-900 font-bold rounded-lg btn-bet text-sm" onclick="setBet(0.50)">0.50 WLD</button>
+                <button class="w-full py-2 bg-yellow-500 text-gray-900 font-bold rounded-lg btn-bet text-sm" onclick="setBet(1.00)">1 WLD</button>
+                <button class="w-full py-2 bg-yellow-500 text-gray-900 font-bold rounded-lg btn-bet text-sm" onclick="setBet(5.00)">5 WLD</button>
+                <button class="w-full py-2 bg-yellow-500 text-gray-900 font-bold rounded-lg btn-bet text-sm" onclick="setBet(10.00)">10 WLD</button>
+            </div>
+        </main>
+        
+        <!-- 4. BARRA DE NAVEGACIÓN INFERIOR (Simulada) -->
+        <footer class="nav-bar flex justify-center p-3">
+            <div class="text-yellow-500 flex flex-col items-center">
+                <i class="ph ph-house-fill text-2xl"></i>
+                <span class="text-xs">Home</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- LÓGICA DEL JUEGO CON JAVASCRIPT -->
+    <script>
+        // --- Configuración de Audio (Tone.js) ---
+        let coinSound = null;
+        let audioStarted = false;
+
+        /**
+         * Inicializa el AudioContext. Debe ser llamado por una interacción del usuario.
+         */
+        function startAudioContext() {
+            if (Tone.context.state !== 'running') {
+                Tone.start();
+                audioStarted = true;
+                // Ocultar el botón de activación una vez que el audio funciona
+                document.getElementById('audio-start-btn').classList.add('hidden');
+            }
+        }
+
+        /**
+         * Inicializa el sintetizador de sonido de la moneda.
+         */
+        function setupCoinSound() {
+            // Sintetizador simple MonoSynth para el efecto de "clink"
+            coinSound = new Tone.MonoSynth({
+                oscillator: { type: "sawtooth" },
+                envelope: {
+                    attack: 0.005,
+                    decay: 0.1,
+                    sustain: 0.05,
+                    release: 0.1
+                },
+                filterEnvelope: {
+                    attack: 0.01,
+                    decay: 0.1,
+                    sustain: 0.5,
+                    release: 0.1,
+                    baseFrequency: 500,
+                    octaves: 3
+                }
+            }).toDestination();
+        }
+
+        /**
+         * Reproduce el sonido de la moneda.
+         */
+        function playCoinSound() {
+            if (audioStarted && coinSound) {
+                // Toca una nota aguda y corta
+                coinSound.triggerAttackRelease("C6", "8n");
+            }
+        }
+        
+        // --- Variables de Estado del Juego ---
+        let winCount = 0;
+        let lossCount = 0;
+        let currentBet = 0.25; // Monto de apuesta por defecto
+        const FLIP_DURATION_MS = 2000; // Duración de la animación
+
+        // --- Referencias al DOM ---
+        const resultMessage = document.getElementById('result-message');
+        const btnAguila = document.getElementById('btn-aguila');
+        const btnCruz = document.getElementById('btn-cruz');
+        const coinSvg = document.getElementById('coin-svg');
+        const coinLabel = document.getElementById('coin-label');
+        const winsCount = document.getElementById('wins-count');
+        const lossesCount = document.getElementById('losses-count');
+        const wldAmountDisplay = document.getElementById('wld-amount-display');
+        const betButtons = document.querySelectorAll('.grid > button');
+
+        /**
+         * Lógica de la tirada de moneda (50/50).
+         * @param {boolean} playerGuess - True para Águila, False para Cruz.
+         */
+        function flipCoinAndCheckWin(playerGuess) {
+            
+            // 50% de probabilidad de ser true (Águila) o false (Cruz)
+            const result = Math.random() < 0.5;
+            
+            const outcomeText = result ? 'Águila' : 'Cruz';
+            const playerWon = (playerGuess === result);
+            
+            return { outcomeText, playerWon, result };
+        }
+
+        /**
+         * Establece el monto de la apuesta y actualiza la UI.
+         */
+        function setBet(amount) {
+            currentBet = amount;
+            wldAmountDisplay.textContent = currentBet.toFixed(2) + ' WLD';
+            resultMessage.textContent = 'Apuesta lista: ' + currentBet.toFixed(2) + ' WLD';
+            
+            // Resaltar el botón seleccionado
+            betButtons.forEach(btn => {
+                btn.classList.remove('ring-2', 'ring-yellow-500');
+            });
+            const clickedButton = event.target;
+            if (clickedButton) {
+                clickedButton.classList.add('ring-2', 'ring-yellow-500');
+            }
+        }
+
+        /**
+         * Maneja la apuesta del jugador y el flujo del juego.
+         */
+        function makeGuess(guess) {
+            // Asegura que el AudioContext esté iniciado (necesario para móviles)
+            if (!audioStarted) {
+                startAudioContext(); 
+            }
+
+            // 1. Iniciar animación, deshabilitar botones y reproducir sonido
+            setGameActive(true);
+            resultMessage.textContent = 'Lanzando la moneda...';
+            playCoinSound(); 
+
+            // Reiniciar estado visual de la moneda
+            coinSvg.classList.remove('text-green-500', 'text-red-500', 'ph-x-circle-fill', 'ph-check-circle-fill');
+            coinSvg.classList.add('ph-smiley-wink-fill', 'text-gray-900');
+            document.getElementById('coin-display').classList.remove('bg-green-600', 'bg-red-600');
+            document.getElementById('coin-display').classList.add('bg-yellow-600');
+            
+            coinSvg.classList.remove('coin-icon-stopped');
+            coinSvg.classList.add('coin-icon');
+            coinLabel.classList.remove('opacity-100');
+            coinLabel.classList.add('opacity-0');
+
+            // 2. Ejecutar lógica después de la duración de la animación
+            setTimeout(() => {
+                const flipResult = flipCoinAndCheckWin(guess);
+                
+                // 3. Detener animación y mostrar resultado
+                coinSvg.classList.remove('coin-icon');
+                coinSvg.classList.add('coin-icon-stopped');
+                
+                coinLabel.textContent = flipResult.outcomeText.toUpperCase();
+                coinLabel.classList.remove('opacity-0');
+                coinLabel.classList.add('opacity-100');
+
+                updateGameStatus(flipResult);
+
+                // 4. Re-habilitar botones
+                setGameActive(false);
+
+            }, FLIP_DURATION_MS);
+        }
+
+        /**
+         * Actualiza la UI y los contadores con el resultado.
+         */
+        function updateGameStatus(flipResult) {
+            
+            document.getElementById('coin-display').classList.remove('bg-yellow-600');
+            coinSvg.classList.remove('ph-smiley-wink-fill', 'text-gray-900');
+            
+            if (flipResult.playerWon) {
+                resultMessage.textContent = `¡GANASTE +${currentBet.toFixed(2)} WLD!`;
+                resultMessage.classList.remove('text-red-400', 'text-white');
+                resultMessage.classList.add('text-green-400');
+                coinSvg.classList.add('ph-check-circle-fill', 'text-white'); // Ícono de éxito
+                document.getElementById('coin-display').classList.add('bg-green-500');
+                winCount++;
+            } else {
+                resultMessage.textContent = `PERDISTE -${currentBet.toFixed(2)} WLD`;
+                resultMessage.classList.remove('text-green-400', 'text-white');
+                resultMessage.classList.add('text-red-400');
+                coinSvg.classList.add('ph-x-circle-fill', 'text-white'); // Ícono de fallo
+                document.getElementById('coin-display').classList.add('bg-red-500');
+                lossCount++;
+            }
+            
+            // Actualizar contadores
+            winsCount.textContent = winCount;
+            lossesCount.textContent = lossCount;
+        }
+
+        /**
+         * Habilita o deshabilita los botones.
+         */
+        function setGameActive(active) {
+            btnAguila.disabled = active;
+            btnCruz.disabled = active;
+            betButtons.forEach(btn => btn.disabled = active); 
+        }
+
+        /**
+         * Inicializa el estado visual del botón de apuesta predeterminado (0.25 WLD).
+         */
+        function initializeBetButton() {
+            betButtons.forEach(btn => {
+                if (btn.textContent.trim() === '0.25 WLD') {
+                    btn.classList.add('ring-2', 'ring-yellow-500');
+                }
+            });
+        }
+
+
+        // --- Inicialización al cargar la página ---
+        window.onload = () => {
+             // Configurar el sintetizador de sonido
+             setupCoinSound();
+             
+             // Mostrar el botón de activación de audio si es necesario (generalmente en iOS/Android)
+             if (Tone.context.state !== 'running') {
+                document.getElementById('audio-start-btn').classList.remove('hidden');
+             } else {
+                 audioStarted = true;
+             }
+            
+             setGameActive(false);
+             resultMessage.classList.add('text-white');
+             wldAmountDisplay.textContent = currentBet.toFixed(2) + ' WLD';
+             initializeBetButton();
+        };
+    </script>
+</body>
+</html>
+
