@@ -115,7 +115,7 @@
             <div class="flex items-center justify-center space-x-2 mt-1 mb-2">
                 <!-- Icono de Worldcoin (Ejemplo con SVG o Carácter Unicode mejorado) -->
                 <span class="text-2xl font-extrabold text-white">⏣</span> 
-                <h2 id="current-bet" class="text-4xl font-extrabold text-white">0.25 WLD</h2>
+                <h2 id="current-bet" class="text-4xl font-extrabold text-white">0.00 WLD</h2>
                 <!-- Flecha desplegable (solo visual) -->
                 <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
             </div>
@@ -179,7 +179,7 @@
         ];
 
 
-        let currentBetAmount = 0.25;
+        let currentBetAmount = 0.00; // Cambiado de 0.25 a 0.00 por defecto
         let wins = 0;
         let losses = 0;
         let isFlipping = false;
@@ -289,6 +289,26 @@
             currentBetAmount = amount;
             document.getElementById('current-bet').textContent = `${amount.toFixed(2)} WLD`;
             updateMessage('Apuesta seleccionada: ' + amount.toFixed(2) + ' WLD.');
+            
+            // Lógica para resaltar el botón seleccionado
+            document.querySelectorAll('.bet-amount-btn').forEach(btn => {
+                // Desactivar todos (estilo predeterminado)
+                btn.classList.remove('bg-amber-500', 'text-black', 'font-extrabold', 'shadow-md');
+                btn.classList.add('bg-zinc-700', 'text-white', 'font-medium', 'hover:bg-zinc-600');
+            });
+
+            // Activar el botón actual (estilo seleccionado)
+            const currentBtn = Array.from(document.querySelectorAll('.bet-amount-btn')).find(btn => {
+                // Parseamos el texto del botón y comparamos con el monto
+                const btnAmount = parseFloat(btn.textContent.split(' ')[0]);
+                return btnAmount === amount;
+            });
+
+            if (currentBtn) {
+                currentBtn.classList.remove('bg-zinc-700', 'text-white', 'font-medium', 'hover:bg-zinc-600');
+                currentBtn.classList.add('bg-amber-500', 'text-black', 'font-extrabold', 'shadow-md');
+            }
+
             // Opcional: Volver a comprobar el saldo al cambiar la apuesta
             if (playerWalletAddress) {
                  fetchTokenBalance(playerWalletAddress);
@@ -391,6 +411,12 @@
                 return;
             }
 
+            // Verificar que se haya seleccionado un monto de apuesta
+            if (currentBetAmount <= 0) {
+                updateMessage("¡Error! Debes seleccionar un monto de apuesta mayor a 0 WLD.", true);
+                return;
+            }
+
             isFlipping = true;
             toggleButtons(true);
 
@@ -436,7 +462,7 @@
                 document.getElementById('splash-screen').classList.add('hidden-splash');
             }, 5000); 
             
-            setBet(0.25);
+            // setBet(0.25); // El monto predeterminado de 0.25 WLD ha sido eliminado para forzar la selección.
         });
 
     </script>
